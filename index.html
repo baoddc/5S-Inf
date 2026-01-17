@@ -136,7 +136,7 @@
             });
         });
 
-        // Thời gian thực (múi giờ thiết bị)
+    // Thời gian thực (múi giờ thiết bị)
         function updateTime() {
             const now = new Date();
             const timeString = now.toLocaleTimeString('vi-VN', {
@@ -150,15 +150,15 @@
         setInterval(updateTime, 1000);
         updateTime();
 
-        // Lấy vị trí thiết bị + thời tiết từ Open-Meteo (không cần API key)
+        // Lấy vị trí + thời tiết + địa điểm tên thật
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 position => {
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
 
-                    // Lấy thời tiết từ Open-Meteo
-                    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=Asia%2FBangkok&forecast_days=1`;
+                    // 1. Lấy thời tiết từ Open-Meteo
+                    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`;
 
                     fetch(weatherUrl)
                         .then(response => response.json())
@@ -166,27 +166,40 @@
                             if (data.current) {
                                 const temp = Math.round(data.current.temperature_2m);
                                 const weatherCode = data.current.weather_code;
-
-                                // Chuyển weather code sang mô tả tiếng Việt (cơ bản)
                                 let description = 'Trời quang';
                                 if (weatherCode >= 51 && weatherCode <= 67) description = 'Mưa';
                                 else if (weatherCode >= 71 && weatherCode <= 77) description = 'Tuyết';
                                 else if (weatherCode >= 80) description = 'Mưa rào';
                                 else if (weatherCode >= 3) description = 'Mây';
-
                                 document.getElementById('current-temp').textContent = `${temp}°C - ${description}`;
                             } else {
                                 document.getElementById('current-temp').textContent = 'Không lấy được nhiệt độ';
                             }
-
-                            // Lấy tên địa điểm gần đúng (dùng reverse geocoding đơn giản từ Open-Meteo hoặc fallback)
-                            // Open-Meteo không có tên địa điểm, dùng API khác nếu cần chính xác hơn (nhưng cần key). Hiện tại hiển thị tọa độ
-                            document.getElementById('current-location').textContent = `Vĩ độ ${lat.toFixed(2)}, Kinh độ ${lon.toFixed(2)}`;
                         })
-                        .catch(error => {
-                            console.error('Lỗi lấy thời tiết:', error);
+                        .catch(() => {
                             document.getElementById('current-temp').textContent = 'Lỗi thời tiết';
-                            document.getElementById('current-location').textContent = 'Không xác định';
+                        });
+
+                    // 2. Reverse geocoding từ BigDataCloud (tên địa điểm)
+                    const geoUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=vi`;
+
+                    fetch(geoUrl)
+                        .then(response => response.json())
+                        .then(data => {
+                            let locationText = 'Không xác định';
+                            if (data.city || data.locality || data.principalSubdivision) {
+                                locationText = [
+                                    data.city || data.locality,
+                                    data.principalSubdivision
+                                ].filter(Boolean).join(', ') || data.countryName;
+                            } else if (data.countryName) {
+                                locationText = data.countryName;
+                            }
+                            document.getElementById('current-location').textContent = locationText;
+                        })
+                        .catch(() => {
+                            // Fallback nếu API lỗi: hiển thị tọa độ
+                            document.getElementById('current-location').textContent = `Vĩ độ ${lat.toFixed(2)}, Kinh độ ${lon.toFixed(2)}`;
                         });
                 },
                 error => {
