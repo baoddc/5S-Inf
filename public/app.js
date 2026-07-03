@@ -111,6 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return (
         hostname.includes('shopee.vn') ||
         hostname.includes('shope.ee') ||
+        hostname.includes('shp.ee') ||
         hostname.includes('shopee.co.id') ||
         hostname.includes('shopee.com.my') ||
         hostname.includes('shopee.co.th') ||
@@ -137,7 +138,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const parsedUrl = new URL(trimmed);
       
       // If it's a short link, keep it exactly as it is to avoid losing parameters
-      if (parsedUrl.hostname.includes('shope.ee') || parsedUrl.hostname.includes('s.shopee.vn')) {
+      if (
+        parsedUrl.hostname.includes('shope.ee') || 
+        parsedUrl.hostname.includes('s.shopee.vn') ||
+        parsedUrl.hostname.includes('shp.ee')
+      ) {
         return trimmed;
       }
       
@@ -246,17 +251,11 @@ document.addEventListener('DOMContentLoaded', () => {
     outputResultDetails.classList.add('hidden');
     outputLoadingState.classList.remove('hidden');
 
-    // Generate Affiliate redirection link
-    // https://s.shopee.vn/an_redir?origin_link=...&affiliate_id=...&sub_id=...
-    let affUrl = `https://s.shopee.vn/an_redir?origin_link=${encodeURIComponent(cleanUrl)}&affiliate_id=${appConfig.affiliateId}`;
-    if (appConfig.subId1) {
-      affUrl += `&sub_id=${encodeURIComponent(appConfig.subId1)}`;
-    }
-
-    // Attempt to scrape product metadata via backend proxy
+    // Attempt to scrape product metadata and resolve short links via backend proxy
     let metadata = { success: false, title: 'Sản phẩm Shopee', image: '' };
     try {
-      const response = await fetch('/api/scrape-metadata', {
+      const apiHost = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+      const response = await fetch(`${apiHost}/api/scrape-metadata`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -268,6 +267,24 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (err) {
       console.warn('Could not scrape product metadata:', err);
+    }
+
+    // Determine the original destination URL to convert
+    // If the backend successfully resolved a short link, use the resolved URL
+    let targetUrl = cleanUrl;
+    if (metadata.success && metadata.finalUrl) {
+      const finalUrlLower = metadata.finalUrl.toLowerCase();
+      // Ensure we didn't redirect to an error page or fallback loop
+      if (!finalUrlLower.includes('/error_page') && !finalUrlLower.includes('redirect')) {
+        targetUrl = cleanShopeeUrl(metadata.finalUrl);
+      }
+    }
+
+    // Generate Affiliate redirection link
+    // https://s.shopee.vn/an_redir?origin_link=...&affiliate_id=...&sub_id=...
+    let affUrl = `https://s.shopee.vn/an_redir?origin_link=${encodeURIComponent(targetUrl)}&affiliate_id=${appConfig.affiliateId}`;
+    if (appConfig.subId1) {
+      affUrl += `&sub_id=${encodeURIComponent(appConfig.subId1)}`;
     }
 
     // Render converted results
@@ -291,10 +308,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Set titles
     const parsedTitle = metadata.title || 'Sản phẩm Shopee';
     previewProductTitle.textContent = parsedTitle;
-    previewProductDesc.textContent = cleanUrl;
+    previewProductDesc.textContent = targetUrl;
 
     // Save metadata response to local history
-    saveToHistory(parsedTitle, cleanUrl, affUrl, metadata.image || '');
+    saveToHistory(parsedTitle, targetUrl, affUrl, metadata.image || '');
 
     // Stop signature animation cleanly
     setTimeout(() => {
